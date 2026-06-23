@@ -1,0 +1,263 @@
+/*{
+    "type": "action",
+    "targets": ["omnifocus"],
+    "author": "Otto Automator",
+    "identifier": "com.omni-automation.of.task-to-obsidian-mod",
+    "version": "2.2.2",
+    "description": "Creates a corresponding note in the indicated Obsidian vault, for the selected task or project. There is a preference for including the tags assigned to the task or project.",
+    "label": "Copy to Obsidian ",
+    "shortLabel": "Copy to Obsidian",
+    "paletteLabel": "Copy to Obsidian",
+    "image": "note.text.badge.plus"
+}*/
+
+/*
+
+The top level design target for this code is to supply a minimal UX to copy a set of tasks
+out of OmniFocus and into Obsidian.  Keeping the current OF sort order is important as is
+retaining the OF creation and modification times of each task.
+
+The high level details of this is that the script creates 5 metadata tags in
+the yaml header (called frontmatter in Obsidian circles):
+
+OF_sortOrder: 1
+OF_createdTime: 1476091762972
+OF_modifiedTime: 1734307154917
+OF_createdLocalTime: Mon Oct 10 2016 05:29:22 GMT-0400 (Eastern Daylight Time)
+OF_modifiedLocalTime: Sun Dec 15 2024 18:59:14 GMT-0500 (Eastern Standard Time)
+
+The OF_sortOrder is just an enumeration across the selected tasks in OF.  The
+OF_createdTime and OF_modifiedTime are the epoch times of the task with the
+remaining two keys being the localtime at the respective times.
+
+Note that to maintain the sort in Obsidian one needs to load following community
+plugin:
+
+https://github.com/SebastianMC/obsidian-custom-sort
+
+And then set the sortspec (sortspec.md file) to sort on the key of choice.
+To maintain the same sort as selected in OF, start with the following YAML:
+
+---
+sorting-spec: |
+    < a-z by-metadata: OF_sortOrder
+    %
+    sortspec
+---
+
+If all is well, one can then copy from OmniFocus to Obsidian.  Note that the
+script supports optionally overwriting existing tasks.
+
+Usage Notes:
+
+Important - one MUST open the Obsidian vault of interest and open a file in the
+desired target folder.  The "Copy to Obsidian" automation shortcut supports
+the <CTRL> key that when pressed, brings up the configuration dialog window.
+From the dialog window one selects the specific vault and a few other options.
+
+With the dialog saved, executing the automation without the <CTRL> will perform
+the copy.  One may want to enable the OmniFocus JavaScript Console to see any
+error messages.
+
+There are several commented console.log() messages which can be uncommented if
+one runs into issues.
+
+Git Integration Notes:
+
+It is not uncommon to use git to version Obsidian vaults.  One can either use
+a community git plugin or just use git.  If the latter, it seems to be better to
+separate the git workspace and the repository (the .git dir) so that Obsidian
+does not crawl the repository - only place the git workspace in the vault (by
+some means of choice).
+
+When just using git, one can empty the Obsidian directory one is copying into
+prior to an 'import' ("rm *" in the target directory via the command line
+WHILE NOT DELETING the sortspec.md file and leaving it actively displayed) so
+to capture the deleted files as well as added, edited, and renamed files in
+that directory.
+
+*/
+(() => {
+    const preferences = new Preferences();
+    const action = new PlugIn.Action(async function(selection, sender){
+        try {
+            if (app.controlKeyDown){
+                var errorID = "A";
+                vaultTitle = preferences.readString("vaultTitle");
+                var vaultTitleInput = new Form.Field.String(
+                    "vaultTitle",
+                    null,
+                    vaultTitle,
+                    null
+                );
+
+                shouldIncludeTagsValue = preferences.readBoolean("shouldIncludeTags");
+                var includeTagsCheckbox = new Form.Field.Checkbox(
+                    "shouldIncludeTags",
+                    "Include OmniFocus tags with note",
+                    shouldIncludeTagsValue
+                );
+
+                shouldRequireURIPluginValue = preferences.readBoolean("shouldRequireURIPlugin");
+                var requireURIpluginCheckbox = new Form.Field.Checkbox(
+                    "shouldRequireURIPlugin",
+                    "Use with the “Advanced Obsidian URI” plug-in",
+                    shouldRequireURIPluginValue
+                );
+
+                shouldIncludeObsLinkValue = preferences.readBoolean("shouldIncludeObsLink");
+                var includeObsLink = new Form.Field.Checkbox(
+                    "shouldIncludeObsLink",
+                    "Add Obsidian link in OF note",
+                    shouldIncludeObsLinkValue
+                );
+
+                shouldOverwriteFileValue = preferences.readBoolean("shouldOverwriteFile");
+                var overwriteFileCheckbox = new Form.Field.Checkbox(
+                    "shouldOverwriteFile",
+                    "Silently overwrite existing files in Obsidian",
+                    shouldOverwriteFileValue
+                );
+
+                inputForm = new Form();
+                inputForm.addField(vaultTitleInput);
+                inputForm.addField(includeTagsCheckbox);
+                inputForm.addField(requireURIpluginCheckbox);
+                inputForm.addField(includeObsLink);
+                inputForm.addField(overwriteFileCheckbox);
+                formPrompt = "Enter title of the existing Obsidian vault to use:";
+                formObject = await inputForm.show(formPrompt,"Continue");
+
+                newVaultTitle = formObject.values["vaultTitle"];
+                newShowTags = formObject.values["shouldIncludeTags"];
+                newshouldRequireURIPlugin = formObject.values["shouldRequireURIPlugin"];
+                newAddLink = formObject.values["shouldIncludeObsLink"];
+                newOverwriteFile = formObject.values["shouldOverwriteFile"];
+
+                preferences.write("vaultTitle", newVaultTitle);
+                preferences.write("shouldIncludeTags", newShowTags);
+                preferences.write("shouldRequireURIPlugin", newshouldRequireURIPlugin);
+                preferences.write("shouldIncludeObsLink", newAddLink);
+                preferences.write("shouldOverwriteFile", newOverwriteFile);
+            } else {
+                var errorID = "B";
+                var vaultTitle = preferences.readString("vaultTitle");
+                if (!vaultTitle || vaultTitle === "") {
+                    throw {
+                        name: "Undeclared Vault Preference",
+                        message: "A default Obsidian vault has not yet been indicated for this plug-in.\n\nRun this plug-in again, while holding down the Control key, to summon the preferences dialog."
+                    }
+                };
+                // console.log("Pref-vaultTitle: ", vaultTitle);
+
+                var shouldIncludeTags = preferences.readBoolean("shouldIncludeTags");
+                if(!shouldIncludeTags){shouldIncludeTags = false};
+                // console.log("Pref-shouldIncludeTags: ", shouldIncludeTags);
+
+                var shouldRequireURIPlugin = preferences.readBoolean("shouldRequireURIPlugin");
+                if(!shouldRequireURIPlugin){shouldRequireURIPlugin = false};
+                // console.log("Pref-shouldRequireURIPlugin: ", shouldRequireURIPlugin);
+
+                var shouldIncludeObsLink = preferences.readBoolean("shouldIncludeObsLink");
+                if(!shouldIncludeObsLink){shouldIncludeObsLink = false};
+                // console.log("Pref-shouldIncludeObsLink: ", shouldIncludeObsLink);
+
+                var shouldOverwriteFile = preferences.readBoolean("shouldOverwriteFile");
+                if(!shouldOverwriteFile){shouldOverwriteFile = false};
+                // console.log("Pref-shouldOverwriteFile: ", shouldOverwriteFile);
+
+                selection.databaseObjects.every((item, count) => {
+
+                    itemID = item.id.primaryKey;
+                    itemLink = `omnifocus:///task/${itemID}`;
+                    itemTitle = item.name;
+                    itemNote = item.note;
+                    mdLink = `[(OmniFocus Link)](${itemLink})`;
+                    encodedLink = encodeURIComponent(mdLink);
+                    encodedTitle = encodeURIComponent(itemTitle);
+                    encodedNote = encodeURIComponent(itemNote);
+                    encodedVaultTitle = encodeURIComponent(vaultTitle);
+
+                    encodedTags = null;
+                    // Always get the creation and modified dates.  But if the object
+                    // does not have them, log and skip the item since it is probably
+                    // not a task.
+                    if (item.added == null || item.modified == null) {
+                        console.log(`Skipping "${itemTitle}" due to no time field`);
+                        // Can either stop or keep going ... ???
+                        return true;
+                    }
+                    ofTimes = `OF_createdTime: ${item.added.getTime()}\nOF_modifiedTime: ${item.modified.getTime()}`;
+                    ofDates = `OF_createdLocalTime: ${item.added}\nOF_modifiedLocalTime: ${item.modified}`;
+                    YAMLheader = `---\nid: ${itemID}\nOF_sortOrder: ${count+1}\n${ofTimes}\n${ofDates}`;
+                    tagArrayStr = "";
+                    if(shouldIncludeTags && item.tags.length > 0){
+                        tagTitles = item.tags.map(tag => tag.name);
+                        tagArrayStr = `[${tagTitles.join(", ")}]`;
+                        YAMLheader += `\ntags: ${tagArrayStr}\n---`;
+                    } else {
+                        YAMLheader += `\n---`;
+                    }
+                    // Regardless, add 
+                    encodedHeader = encodeURIComponent(YAMLheader);
+
+                    if(shouldRequireURIPlugin){
+                        searchLinkStr = `obsidian://advanced-uri?vault=${encodedVaultTitle}&uid=${itemID}`;
+                    } else {
+                        searchLinkStr = `obsidian://search?vault=${encodedVaultTitle}&query=${itemID}`;
+                    }
+                    // console.log("Search URL: ", searchLinkStr);
+
+                    if(shouldIncludeObsLink){
+                        if(app.userVersion < new Version("4")){
+                            item.note += "\n\n" + searchLinkStr;
+                        } else {
+                            noteObj = item.noteText;
+                            linkURL = URL.fromString(searchLinkStr);
+                            linkObj = new Text("(Obsidian Link)", noteObj.style);
+                            newLineObj = new Text(" \n", noteObj.style);
+                            style = linkObj.styleForRange(linkObj.range);
+                            style.set(Style.Attribute.Link, linkURL);
+                            noteObj.insert(noteObj.start, linkObj);
+                            noteObj.insert(linkObj.range.end, newLineObj);
+                        }
+                    }
+
+                    // Handle file overwrites
+                    if(shouldOverwriteFile){
+                        overwriteStr = "&overwrite";
+                    } else {
+                        overwriteStr = "";
+                    }
+
+                    // See https://help.obsidian.md/Extending+Obsidian/Obsidian+URI
+                    targetLink = `obsidian://new?vault=${encodedVaultTitle}${overwriteStr}&name=${encodedTitle}&content=${encodedHeader}%0A%0A${encodedLink}%0A%0A${encodedNote}`;
+                    // in pursuit of a decent log message
+                    if(item.containingProject == null){
+                        pname = "null";
+                    } else {
+                        pname = item.containingProject.name;
+                    }
+                    console.log("Copied note: project=" + pname + "; tags=" + tagArrayStr + "; name=" + itemTitle);
+                    // To debug the (verbose) targetLink, uncomment this line
+                    // console.log("Create URL: ", `obsidian://new?vault=${encodedVaultTitle}${overwriteStr}&name=${encodedTitle}&content=${encodedHeader}%0A%0A${encodedLink}`);
+                    URL.fromString(targetLink).open();
+                    return true;
+                })
+            }
+        }
+        catch(err) {
+            if (errorID !== "A") {
+                new Alert(err.name, err.message).show();
+            }
+        }
+    });
+
+    action.validate = function(selection, sender) {
+        return (
+            selection.databaseObjects.length >= 1 && selection.tasks.length >= 1 || selection.projects.length >= 1
+        )
+    };
+
+    return action;
+})();

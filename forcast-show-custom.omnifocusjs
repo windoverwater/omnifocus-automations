@@ -1,0 +1,32 @@
+/*{
+	"type": "action",
+	"targets": ["omnifocus"],
+	"author": "Udo Leiteritz",
+	"identifier": "com.omni-automation.of.show-forecast-past-and-present",
+	"version": "1.0",
+	"description": "Selects due yesterday and today in the forecast day",
+	"label": "Show Forecast Past & Present",
+	"shortLabel": "Forecast Past & Now"
+}*/
+(() => {
+	var action = new PlugIn.Action(function(selection, sender){
+		var win = document.windows[0]
+		win.perspective = Perspective.BuiltIn.Forecast
+		
+		var today = Calendar.current.startOfDay(new Date())
+		foreCastToday = win.forecastDayForDate(today)
+		
+		var nowYesterday = new Date()
+		nowYesterday.setDate(nowYesterday.getDate() - 1)
+		var yesterday = Calendar.current.startOfDay(nowYesterday)
+		foreCastPastDue = win.forecastDayForDate(yesterday)
+
+		win.selectForecastDays([foreCastPastDue, foreCastToday])
+	});
+
+	action.validate = function(selection, sender){
+		return true
+	};
+	
+	return action;
+})();

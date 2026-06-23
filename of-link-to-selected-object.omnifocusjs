@@ -1,0 +1,36 @@
+/*{
+	"type": "action",
+	"targets": ["omnifocus"],
+	"author": "Otto Automator",
+	"identifier": "com.omni-automation.of.link-to-selected-object",
+	"version": "1.2",
+	"description": "Places a link URL to the selected task, project, tag, or folder on the clipboard.",
+	"label": "Copy Link to Object",
+	"shortLabel": "Copy Link",
+	"paletteLabel": "Copy Link",
+	"image": "link"
+}*/
+(() => {
+	var action = new PlugIn.Action(function(selection, sender){
+		// action code
+		// selection options: tasks, projects, folders, tags, allObjects
+		var item = selection.databaseObjects[0]
+		if (item instanceof Folder){
+			var urlStr = "omnifocus:///folder/"
+		} else if (item instanceof Tag){
+			var urlStr = "omnifocus:///tag/"
+		} else {
+			var urlStr = "omnifocus:///task/"
+		}
+		Pasteboard.general.string = urlStr + item.id.primaryKey
+		new Alert("Copy Link", "A link to the selected item has been placed on the clipboard.").show()
+	});
+
+	action.validate = function(selection, sender){
+		// validation code
+		// selection options: tasks, projects, folders, tags, allObjects
+		return (selection.databaseObjects.length === 1)
+	};
+	
+	return action;
+})();

@@ -1,0 +1,55 @@
+/*{
+    "type": "action",
+    "targets": ["omnifocus"],
+    "author": "Otto Automator",
+    "identifier": "com.omni-automation.of.cross-link-2-objects",
+    "version": "1.1",
+    "description": "Appends a bidirectional link to the Note fields of two selected objects.",
+    "label": "Append Bidirectional Link",
+    "shortLabel": "Append Bidirectional Link",
+    "paletteLabel": "Append Bidirectional Link",
+    "image": "link"
+}*/
+(() => {
+    var action = new PlugIn.Action(function(selection, sender){
+        // action code
+        // selection options: tasks, projects, folders, tags, databaseObjects, allObjects
+        var item0 = selection.databaseObjects[0]
+        if (item0 instanceof Folder || item0 instanceof Tag){
+            var errorID = "A"
+                throw {
+                    name: "Incompatible Object Type",
+                    message: "Bidirectional links currently only work for Projects and Tasks."
+                }
+        } else {
+            var urlStr0 = "omnifocus:///task/"
+        }
+        var item1 = selection.databaseObjects[1]
+        if (item1 instanceof Folder || item1 instanceof Tag){
+            var errorID = "B"
+                throw {
+                    name: "Incompatible Object Type",
+                    message: "Bidirectional links currently only work for Projects and Tasks."
+                }
+        } else {
+            var urlStr1 = "omnifocus:///task/"
+        }
+        fullStr0 = "\n[" + item1.name + "]( " + urlStr1 + item1.id.primaryKey + " )"
+        fullStr1 = "\n[" + item0.name + "]( " + urlStr0 + item0.id.primaryKey + " )"
+        console.log("Append Link to ", item0.name, ": ", fullStr0)
+        item0.appendStringToNote(fullStr0)
+        console.log("Append Link to ", item1.name, ": ", fullStr1)
+        item1.appendStringToNote(fullStr1)
+    });
+
+    action.validate = function(selection, sender){
+        // validation code
+        // selection options: tasks, projects, folders, tags, databaseObjects, allObjects
+        return (
+            selection.databaseObjects.length === 2 &&
+            (selection.tasks.length + selection.projects.length === 2)
+        )        
+    };
+    
+    return action;
+})();

@@ -1,0 +1,74 @@
+/*{
+	"type": "action",
+	"targets": ["omnifocus"],
+	"author": "Sandy Currier",
+	"identifier": "com.omni-automation.of.goto-end-of-list",
+	"version": "1.0",
+	"description": "Goto the last itme in the current list of items",
+	"label": "Goto End of List",
+	"shortLabel": "Goto EOL"
+}*/
+(() => {
+  const action = new PlugIn.Action(async function(selection) {
+
+    console.log("=== EOL Tagger: starting ===");
+
+    // Get or create the EOL tag
+    let eolTag = Tag.byName("EOL");
+    console.log("Existing EOL tag found:", eolTag ? eolTag.name : "none");
+    if (!eolTag) {
+      eolTag = new Tag("EOL");
+      console.log("Created new EOL tag");
+    }
+
+    const win = document.windows[0];
+    console.log("Window found:", win ? "yes" : "no");
+
+    const content = win.content;
+    console.log("Content found:", content ? "yes" : "no");
+
+    if (!content) {
+      new Alert("EOL Tagger", "No list content found.").show();
+      return;
+    }
+
+    const tasks = content.availableTasks;
+    console.log("Tasks type:", typeof tasks);
+    console.log("Tasks is array-like:", tasks ? tasks.length : "undefined/null");
+
+    if (!tasks || tasks.length === 0) {
+      new Alert("EOL Tagger", "No tasks found in current view.").show();
+      return;
+    }
+
+    console.log("Number of tasks found:", tasks.length);
+    console.log("First task name:", tasks[0].name);
+    console.log("Last task name:", tasks[tasks.length - 1].name);
+
+    // Remove EOL tag from any previously tagged item
+    const previousEOL = eolTag.tasks;
+    console.log("Previously tagged tasks:", previousEOL.length);
+    previousEOL.forEach(task => {
+      console.log("Removing EOL from:", task.name);
+      task.removeTag(eolTag);
+    });
+
+    // Tag the last item
+    const lastTask = tasks[tasks.length - 1];
+    console.log("Tagging last task:", lastTask.name);
+    lastTask.addTag(eolTag);
+
+    // Select it
+    console.log("Selecting task:", lastTask.name);
+    win.selectObjects([lastTask]);
+
+    console.log("=== EOL Tagger: done ===");
+
+  });
+
+  action.validate = function(selection) {
+    return true;
+  };
+
+  return action;
+})();

@@ -1,0 +1,15 @@
+# Emacs
+*~
+.#*
+\#*\#
+TAGS
+
+# Mac
+.DS_Store
+
+# vscode
+.vscode
+
+# Ignore on purpose
+*.backup
+GIT_IGNORE.*
