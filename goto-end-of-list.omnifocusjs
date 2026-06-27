@@ -13,56 +13,56 @@
 
     console.log("=== EOL Tagger: starting ===");
 
-    // Get or create the EOL tag
-    let eolTag = Tag.byName("EOL");
-    console.log("Existing EOL tag found:", eolTag ? eolTag.name : "none");
-    if (!eolTag) {
-      eolTag = new Tag("EOL");
-      console.log("Created new EOL tag");
+    try {
+      // Find or create the EOL tag
+      const matches = flattenedTags.filter(t => t.name === "EOL");
+      let eolTag = matches.length > 0 ? matches[0] : new Tag("EOL");
+      console.log("eolTag:", eolTag.name);
+
+      const win = document.windows[0];
+      const tree = win.content;
+
+      // Walk the entire visible content tree, collecting Task nodes in display order
+      const taskNodes = [];
+      tree.rootNode.apply(node => {
+        if (node.object instanceof Task) {
+          taskNodes.push(node);
+        }
+      });
+
+      console.log("Visible task nodes found:", taskNodes.length);
+
+      if (taskNodes.length === 0) {
+        new Alert("EOL Tagger", "No tasks found in current view.").show();
+        return;
+      }
+
+      console.log("First task:", taskNodes[0].object.name);
+      console.log("Last task:", taskNodes[taskNodes.length - 1].object.name);
+
+      // Remove EOL tag from any previously tagged task
+      const previousEOL = eolTag.tasks;
+      console.log("Previously tagged:", previousEOL.length);
+      previousEOL.forEach(task => task.removeTag(eolTag));
+
+      // Tag the last visible task
+      const lastNode = taskNodes[taskNodes.length - 1];
+      const lastTask = lastNode.object;
+      console.log("Tagging:", lastTask.name);
+      lastTask.addTag(eolTag);
+
+      // Reveal (scroll to) and select it
+      tree.select([]);
+      tree.select([lastNode], true);
+      tree.reveal([lastNode]);
+
+      console.log("=== EOL Tagger: done ===");
+
+    } catch (err) {
+      console.log("CAUGHT ERROR:", err);
+      console.log("ERROR MESSAGE:", err.message);
+      new Alert("EOL Tagger Error", String(err)).show();
     }
-
-    const win = document.windows[0];
-    console.log("Window found:", win ? "yes" : "no");
-
-    const content = win.content;
-    console.log("Content found:", content ? "yes" : "no");
-
-    if (!content) {
-      new Alert("EOL Tagger", "No list content found.").show();
-      return;
-    }
-
-    const tasks = content.availableTasks;
-    console.log("Tasks type:", typeof tasks);
-    console.log("Tasks is array-like:", tasks ? tasks.length : "undefined/null");
-
-    if (!tasks || tasks.length === 0) {
-      new Alert("EOL Tagger", "No tasks found in current view.").show();
-      return;
-    }
-
-    console.log("Number of tasks found:", tasks.length);
-    console.log("First task name:", tasks[0].name);
-    console.log("Last task name:", tasks[tasks.length - 1].name);
-
-    // Remove EOL tag from any previously tagged item
-    const previousEOL = eolTag.tasks;
-    console.log("Previously tagged tasks:", previousEOL.length);
-    previousEOL.forEach(task => {
-      console.log("Removing EOL from:", task.name);
-      task.removeTag(eolTag);
-    });
-
-    // Tag the last item
-    const lastTask = tasks[tasks.length - 1];
-    console.log("Tagging last task:", lastTask.name);
-    lastTask.addTag(eolTag);
-
-    // Select it
-    console.log("Selecting task:", lastTask.name);
-    win.selectObjects([lastTask]);
-
-    console.log("=== EOL Tagger: done ===");
 
   });
 
