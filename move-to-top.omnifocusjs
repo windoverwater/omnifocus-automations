@@ -1,0 +1,89 @@
+/*{
+  "type": "action",
+  "targets": ["omnifocus"],
+  "author": "Sandy",
+  "identifier": "com.local.of.move-to-top",
+  "version": "1.0",
+  "description": "Move the selected task to the top of the current tag or project list.",
+  "label": "Move to Top",
+  "shortLabel": "Move to Top",
+  "paletteLabel": "Move to Top",
+  "image": "arrow.up.to.line"
+}*/
+(() => {
+  const action = new PlugIn.Action(async function(selection) {
+
+    try {
+      const selectedTasks = selection.tasks;
+      if (!selectedTasks || selectedTasks.length === 0) {
+        new Alert("Move to Top", "No task selected. Please select a task first.").show();
+        return;
+      }
+
+      const win = document.windows[0];
+      const tree = win.content;
+
+      // Get all visible tasks in display order
+      const taskNodes = [];
+      tree.rootNode.apply(node => {
+        if (node.object instanceof Task) taskNodes.push(node);
+      });
+
+      if (taskNodes.length === 0) {
+        new Alert("Move to Top", "No tasks visible in current view.").show();
+        return;
+      }
+
+      const viewTasks = taskNodes.map(n => n.object);
+
+      // Determine if all visible tasks share a single tag context
+      let targetTag = null;
+      for (const tag of selectedTasks[0].tags) {
+        const tagTaskIds = new Set(tag.availableTasks.map(t => t.id.primaryKey));
+        const allVisible = viewTasks.every(t => tagTaskIds.has(t.id.primaryKey));
+        if (allVisible) {
+          targetTag = tag;
+          break;
+        }
+      }
+
+      // Determine if all visible tasks share a single project context
+      let targetProject = null;
+      if (!targetTag) {
+        const proj = selectedTasks[0].containingProject;
+        if (proj) {
+          const projTaskIds = new Set(proj.flattenedTasks.map(t => t.id.primaryKey));
+          const allVisible = viewTasks.every(t => projTaskIds.has(t.id.primaryKey));
+          if (allVisible) targetProject = proj;
+        }
+      }
+
+      if (!targetTag && !targetProject) {
+        new Alert("Move to Top", "This script only works when viewing a single tag or project. Mixed perspectives are not supported.").show();
+        return;
+      }
+
+      const currentPerspective = win.perspective;
+
+      if (targetTag) {
+        targetTag.moveTasks(selectedTasks, targetTag.beginningOfTasks);
+      } else {
+        moveTasks(selectedTasks, targetProject.beginning);
+      }
+
+      // Force view refresh
+      win.perspective = Perspective.BuiltIn.Inbox;
+      win.perspective = currentPerspective;
+
+    } catch (err) {
+      new Alert("Move to Top Error", err.message).show();
+    }
+
+  });
+
+  action.validate = function(selection) {
+    return (selection.tasks && selection.tasks.length > 0);
+  };
+
+  return action;
+})();
