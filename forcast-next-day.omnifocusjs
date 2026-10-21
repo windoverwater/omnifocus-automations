@@ -1,0 +1,85 @@
+/*{
+  "type": "action",
+  "targets": ["omnifocus"],
+  "author": "Sandy",
+  "identifier": "com.local.of.forecast-next-day",
+  "version": "1.3",
+  "description": "Advances the Forecast perspective one day forward from the currently displayed date. Switches to Forecast if not already active. Ignores Forecast Tag tasks. Snaps to today if Past is currently selected.",
+  "label": "Forecast Next Day",
+  "shortLabel": "Next Day",
+  "paletteLabel": "Forecast Next Day",
+  "image": "arrow.right.square"
+}*/
+(() => {
+  const action = new PlugIn.Action(async function(selection) {
+
+    try {
+      const win = document.windows[0];
+
+      // Switch to Forecast if not already there, waiting for it to load
+      if (win.perspective !== Perspective.BuiltIn.Forecast) {
+        win.perspective = Perspective.BuiltIn.Forecast;
+        await new Promise(resolve => Timer.once(1.0, resolve));
+      }
+
+      const tree = win.content;
+
+      const validKinds = [
+        ForecastDay.Kind.Today,
+        ForecastDay.Kind.Day,
+        ForecastDay.Kind.Past
+      ];
+
+      let latestDate = null;
+      let latestKind = null;
+
+      tree.rootNode.apply(node => {
+        const obj = node.object;
+        if (obj instanceof ForecastDay && validKinds.includes(obj.kind)) {
+          const nodeDate = Calendar.current.startOfDay(obj.date);
+          if (!latestDate || nodeDate > latestDate) {
+            latestDate = nodeDate;
+            latestKind = obj.kind;
+          }
+        }
+      });
+
+      const today = Calendar.current.startOfDay(new Date());
+
+      // Special case: Past tab selected → go to today, not tomorrow
+      if (latestKind === ForecastDay.Kind.Past) {
+        console.log("Past tab detected — selecting today");
+        const todayForecastDay = win.forecastDayForDate(today);
+        win.selectForecastDays([todayForecastDay]);
+        return;
+      }
+
+      // Fall back to today if we couldn't read anything from the tree
+      if (!latestDate) {
+        console.log("Could not determine current forecast date — falling back to today");
+        latestDate = today;
+      }
+
+      // Advance one day
+      const dc = new DateComponents();
+      dc.day = 1;
+      const nextDate = Calendar.current.dateByAddingDateComponents(latestDate, dc);
+
+      console.log("Base forecast date:", latestDate);
+      console.log("Selecting next date:", nextDate);
+
+      const nextForecastDay = win.forecastDayForDate(nextDate);
+      win.selectForecastDays([nextForecastDay]);
+
+    } catch (err) {
+      new Alert("Forecast Next Day Error", err.message).show();
+    }
+
+  });
+
+  action.validate = function(selection) {
+    return true;
+  };
+
+  return action;
+})();

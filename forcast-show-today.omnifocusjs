@@ -1,0 +1,27 @@
+/*{
+	"type": "action",
+	"targets": ["omnifocus"],
+	"author": "Udo Leiteritz",
+	"identifier": "com.omni-automation.of.show-forecast-today",
+	"version": "1.0",
+	"description": "Selects Today's Forecast",
+	"label": "Show Today Forecast",
+	"shortLabel": "Today's Forecast"
+}*/
+(() => {
+	var action = new PlugIn.Action(function(selection, sender){
+        // Select today's forecast
+        var win = document.windows[0]
+        win.perspective = Perspective.BuiltIn.Forecast
+        var now = new Date()
+        var today = Calendar.current.startOfDay(now)
+        var fday = win.forecastDayForDate(today)
+        win.selectForecastDays([fday])
+	});
+
+	action.validate = function(selection, sender){
+		return true
+	};
+	
+	return action;
+})();
