@@ -1,0 +1,144 @@
+/*{
+  "type": "action",
+  "targets": ["omnifocus"],
+  "author": "Sandy",
+  "identifier": "com.local.of.forecast-prev-day",
+  "version": "1.0",
+  "description": "Moves the Forecast perspective back one day. Handles Past, Today, and Future edge cases correctly. Switches to Forecast if not already active.",
+  "label": "Forecast Previous Day",
+  "shortLabel": "Prev Day",
+  "paletteLabel": "Forecast Previous Day",
+  "image": "arrow.left.square"
+}*/
+(() => {
+  const action = new PlugIn.Action(async function(selection) {
+
+    try {
+      const win = document.windows[0];
+
+      // Switch to Forecast if not already there, waiting for it to load
+      if (win.perspective !== Perspective.BuiltIn.Forecast) {
+        win.perspective = Perspective.BuiltIn.Forecast;
+        await new Promise(resolve => Timer.once(1.0, resolve));
+      }
+
+      const tree = win.content;
+      const today = Calendar.current.startOfDay(new Date());
+
+      // Separate tracking for real days vs future/past special nodes
+      let latestRealDate = null;      // latest ForecastDay.Kind.Day or .Today node
+      let latestKind = null;          // kind of the latest node overall
+      let hasPast = false;            // Past bucket visible
+      let hasFuture = false;          // DistantFuture or FutureMonth visible
+
+      tree.rootNode.apply(node => {
+        const obj = node.object;
+        if (!(obj instanceof ForecastDay)) return;
+
+        switch (obj.kind) {
+          case ForecastDay.Kind.Past:
+            hasPast = true;
+            // Track Past as the "latest" only if nothing else found yet
+            if (!latestKind) {
+              latestKind = obj.kind;
+            }
+            break;
+
+          case ForecastDay.Kind.Today:
+          case ForecastDay.Kind.Day: {
+            const nodeDate = Calendar.current.startOfDay(obj.date);
+            if (!latestRealDate || nodeDate > latestRealDate) {
+              latestRealDate = nodeDate;
+              latestKind = obj.kind;
+            }
+            break;
+          }
+
+          case ForecastDay.Kind.DistantFuture:
+          case ForecastDay.Kind.FutureMonth:
+            hasFuture = true;
+            // Only mark as latest kind if it's the only thing we've seen
+            if (!latestKind) {
+              latestKind = obj.kind;
+            }
+            break;
+        }
+      });
+
+      console.log("latestKind:", latestKind);
+      console.log("latestRealDate:", latestRealDate);
+      console.log("hasPast:", hasPast);
+      console.log("hasFuture:", hasFuture);
+
+      let targetDate = null;
+      let targetPast = false;
+
+      if (latestKind === ForecastDay.Kind.Past) {
+        // Already at Past — can't go further back, stay here
+        console.log("Already at Past — no further back to go");
+        const pastForecastDay = win.forecastDayForDate(
+          Calendar.current.dateByAddingDateComponents(today, (() => { const dc = new DateComponents(); dc.day = -1; return dc; })())
+        );
+        win.selectForecastDays([pastForecastDay]);
+        return;
+
+      } else if (latestKind === ForecastDay.Kind.DistantFuture ||
+                 latestKind === ForecastDay.Kind.FutureMonth) {
+        // Future bucket selected — snap back to today
+        console.log("Future tab detected — snapping back to today");
+        targetDate = today;
+
+      } else if (latestKind === ForecastDay.Kind.Today) {
+        // Today selected — go to Past
+        console.log("Today selected — going to Past");
+        targetPast = true;
+
+      } else if (latestRealDate) {
+        // A specific future day is selected — go back one day
+        const dc = new DateComponents();
+        dc.day = -1;
+        const prevDate = Calendar.current.dateByAddingDateComponents(latestRealDate, dc);
+
+        if (prevDate < today) {
+          // Going back would land before today — go to Past instead
+          console.log("Previous day would be before today — going to Past");
+          targetPast = true;
+        } else if (prevDate.getTime() === today.getTime()) {
+          // Landing exactly on today
+          console.log("Previous day is today");
+          targetDate = today;
+        } else {
+          targetDate = prevDate;
+        }
+
+      } else {
+        // Fallback — nothing readable, go to today
+        console.log("Could not determine current forecast date — falling back to today");
+        targetDate = today;
+      }
+
+      if (targetPast) {
+        // Select Past by passing a date that is clearly in the past
+        const dc = new DateComponents();
+        dc.day = -1;
+        const yesterday = Calendar.current.dateByAddingDateComponents(today, dc);
+        const pastForecastDay = win.forecastDayForDate(yesterday);
+        win.selectForecastDays([pastForecastDay]);
+      } else {
+        console.log("Selecting date:", targetDate);
+        const forecastDay = win.forecastDayForDate(targetDate);
+        win.selectForecastDays([forecastDay]);
+      }
+
+    } catch (err) {
+      new Alert("Forecast Previous Day Error", err.message).show();
+    }
+
+  });
+
+  action.validate = function(selection) {
+    return true;
+  };
+
+  return action;
+})();
